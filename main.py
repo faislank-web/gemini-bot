@@ -9,9 +9,10 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 
-# Inisialisasi Gemini
+# Inisialisasi Gemini dengan versi model yang stabil
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Kita gunakan 'gemini-1.5-flash-latest' agar tidak 404
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
@@ -35,8 +36,8 @@ def setup():
     webhook_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=https://{clean_url}/{TELEGRAM_TOKEN}"
     
     resp = requests.get(webhook_url)
-    # Output khusus sesuai instruksi kamu
-    return f"<h1>📍 Upload Complete Selamat menyaksikan</h1><p>Status: {resp.text}</p>", 200
+    # Sesuai instruksi: Ganti menjadi "Upload Complete Selamat Menyaksikan"
+    return f"<h1>📍 Upload Complete Selamat Menyaksikan</h1><p>Status: {resp.text}</p>", 200
 
 @bot.message_handler(func=lambda message: True)
 def ai_reply(message):
