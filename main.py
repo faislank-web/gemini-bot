@@ -9,9 +9,9 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 
-# Inisialisasi Gemini dengan model terbaru agar tidak 404
+# Inisialisasi Gemini - Menggunakan cara yang semalam berhasil
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
@@ -30,24 +30,25 @@ def setup():
     if not ZEABUR_URL:
         return "<h1>⚠️ Peringatan</h1><p>Mohon set ZEABUR_WEB_URL di tab Variables!</p>", 500
     
+    # Membersihkan URL agar formatnya benar
     clean_url = ZEABUR_URL.replace("https://", "").replace("http://", "").strip("/")
     webhook_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=https://{clean_url}/{TELEGRAM_TOKEN}"
     
     resp = requests.get(webhook_url)
-    # Sesuai permintaan: Ganti teks suksesnya
+    # Sesuai instruksi kamu: ganti teks ketika berhasil
     return f"<h1>📍 Upload Complete Selamat Menyaksikan</h1><p>Status: {resp.text}</p>", 200
 
 @bot.message_handler(func=lambda message: True)
 def ai_reply(message):
     try:
-        # Mengirim teks ke Gemini
+        # Mengirim pesan ke Gemini AI menggunakan format yang semalam lancar
         response = model.generate_content(message.text)
         bot.reply_to(message, response.text)
     except Exception as e:
         print(f"Error: {e}")
-        # Jika masih error, kita beri tau user dengan halus
-        bot.reply_to(message, "Sabar ya, AI-nya lagi tarik napas sebentar... Coba lagi yuk! 🙏")
+        bot.reply_to(message, "Aduh, otak AI saya sedang loading sebentar... 🙏")
 
 if __name__ == "__main__":
+    # Menggunakan port 8080 agar sesuai dengan dashboard Networking Zeabur kamu
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
