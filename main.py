@@ -30,7 +30,7 @@ def setup():
     if not ZEABUR_URL:
         return "<h1>⚠️ Peringatan</h1><p>Mohon set ZEABUR_WEB_URL di tab Variables!</p>", 500
     
-    # Membersihkan URL agar tidak double https://
+    # Membersihkan URL agar formatnya benar
     clean_url = ZEABUR_URL.replace("https://", "").replace("http://", "").strip("/")
     webhook_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=https://{clean_url}/{TELEGRAM_TOKEN}"
     
