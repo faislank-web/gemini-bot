@@ -2,28 +2,28 @@ import os, requests, telebot, datetime, pytz, re, random
 from flask import Flask, request
 from telebot import types
 
-# --- [ AMBIL DATA VARIABEL ] ---
+# --- [ KONFIGURASI ] ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
 MY_USER_ID = int(os.getenv("MY_USER_ID", "8227188993"))
 PORT = int(os.environ.get("PORT", 8080))
 
-# JALUR STABIL v1beta - Tanpa embel-embel '-latest' agar tidak 404
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
+# JALUR SUPER STABIL 2026 (v1beta dengan model flash-latest)
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_KEY}"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
 
 def get_waktu():
-    return datetime.datetime.now(pytz.timezone('Asia/Jakarta')).strftime("%d/%m/%Y %H:%M:%S")
+    return datetime.datetime.now(pytz.timezone('Asia/Jakarta')).strftime("%H:%M:%S")
 
 # --- [ VARIASI ALASAN MANUSIAWI ] ---
 def get_excuse(name):
     pilihan = [
-        f"Aduh Kak {name}, Joni lagi sibuk sortir film baru nih. Coba tanya judul lain dulu ya! 🍿",
-        f"Sori sob, Joni lagi rekap database mingguan @SheJua. Sabar ya! 🎬",
-        f"Duh, sinyal di bioskop lagi bapuk banget Kak {name}. Coba lagi bentar ya! 📽️",
-        f"Joni lagi maraton cek kualitas video nih, otaknya agak panas dikit. Tanya lagi nanti ya! 🎞️"
+        f"Waduh Kak {name}, Joni lagi sibuk sortir film terbaru di storage nih. Coba tanya judul lain ya! 🍿",
+        f"Sori sob, Joni lagi rekap database film buat minggu depan. Bentar lagi ya! 🎬",
+        f"Aduh, sinyal di bioskop lagi bapuk banget nih Kak {name}. Coba lagi bentar ya! 📽️",
+        f"Joni lagi maraton cek kualitas video nih sob, otaknya agak panas dikit. Coba lagi ya! 🎞️"
     ]
     return random.choice(pilihan)
 
@@ -31,8 +31,8 @@ def get_excuse(name):
 def get_response(text, name):
     prompt = (
         f"Kamu Joni, manusia asli pakar film di @SheJua. JANGAN SEBUT AI/BOT/GOOGLE. "
-        f"Sapa Kak {name}. Jawab santai sebagai teman nongkrong. "
-        f"Sekarang jam {get_waktu()}. Pertanyaan: {text}"
+        f"Gaya bahasa: Santai, asik, teman nongkrong. Sapa Kak {name}. "
+        f"Sekarang jam {get_waktu()}. Jawab pertanyaan ini: {text}"
     )
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -41,11 +41,9 @@ def get_response(text, name):
         if 'candidates' in data and data['candidates']:
             return data['candidates'][0]['content']['parts'][0]['text']
         else:
-            # Jika Google kirim error, kita pakai alasan manusiawi
             print(f"🚨 GOOGLE LOG: {data}")
             return get_excuse(name)
-    except Exception as e:
-        print(f"🚨 SYSTEM LOG: {e}")
+    except:
         return f"Sori Kak {name}, Joni lagi pening dikit habis maraton film. Coba lagi nanti ya! 🙏"
 
 @app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
@@ -57,9 +55,12 @@ def receive_update():
 
 @app.route('/')
 def index():
+    try:
+        bot.send_message(MY_USER_ID, "📍 **Upload Complete Selamat Menyaksikan**\nJoni sudah bangun dan siap melayani Kakak! 🚀")
+    except: pass
     return "Joni @SheJua is Online! 🚀", 200
 
-# --- [ HANDLER CHAT PERSONAL (ADMIN ONLY) ] ---
+# --- [ HANDLER ADMIN & TESTING ] ---
 @bot.message_handler(func=lambda m: m.chat.type == 'private')
 def private_handler(m):
     f_name = m.from_user.first_name
@@ -68,9 +69,7 @@ def private_handler(m):
         jawaban = get_response(m.text, f_name)
         bot.reply_to(m, f"🧪 **DATA SIAP DIUJI (ADMIN ONLY)**\n━━━━━━━━━━━━━━━\n{jawaban}")
     else:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🎬 Join @SheJua", url="https://t.me/SheJua"))
-        bot.reply_to(m, f"Maaf Kak {f_name}, Joni cuma tugas di grup @SheJua ya! ✨", reply_markup=markup)
+        bot.reply_to(m, f"Maaf Kak {f_name}, Joni cuma tugas di grup @SheJua ya! ✨")
 
 # --- [ HANDLER #REQUEST ] ---
 @bot.message_handler(func=lambda m: m.text and m.text.lower().startswith("#request"))
@@ -79,9 +78,9 @@ def handle_req(m):
     if match:
         judul, tahun = match.group(1).strip(), match.group(2).strip()
         bot.reply_to(m, f"✅ **Request Diterima!**\n\nFilm **{judul} ({tahun})** sudah Joni catat buat Admin @SheJua! 🍿")
-        bot.send_message(MY_USER_ID, f"🚨 **REQ BARU**\n👤: {m.from_user.first_name}\n🎬: {judul} ({tahun})\n⏰: {get_waktu()}")
+        bot.send_message(MY_USER_ID, f"🚨 **NEW REQ**\n👤: {m.from_user.first_name}\n🎬: {judul} ({tahun})")
     else:
-        bot.reply_to(m, "❌ **FORMAT SALAH!**\n\nContoh: `#request Avatar 2022` 🎬")
+        bot.reply_to(m, "❌ **FORMAT SALAH!** Contoh: `#request Avatar 2022` 🎬")
 
 # --- [ CHAT GRUP ] ---
 @bot.message_handler(func=lambda m: m.text and not m.text.startswith("/"))
@@ -92,9 +91,4 @@ def group_chat(m):
         bot.reply_to(m, jawaban)
 
 if __name__ == "__main__":
-    # Tanda Bangun (Langsung panggil di main agar pasti terkirim)
-    try:
-        bot.send_message(MY_USER_ID, "📍 **Upload Complete Selamat Menyaksikan**\nJoni sudah bangun dan siap melayani Kakak! 🚀")
-    except Exception as e:
-        print(f"❌ Gagal kirim pesan bangun: {e}")
     app.run(host="0.0.0.0", port=PORT)
