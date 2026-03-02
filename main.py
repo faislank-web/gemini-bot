@@ -2,7 +2,6 @@ import os
 import requests
 import telebot
 from telebot import types
-import google.generativeai as genai
 from flask import Flask, request
 
 # --- [ DATA AKSES ] ---
@@ -12,15 +11,12 @@ ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
 # --- [ KONFIGURASI AI ] ---
-genai.configure(api_key=GEMINI_KEY)
-
-# Kita pakai satu model utama yang paling stabil saja dulu biar nggak bentrok v1beta
-MODEL_NAME = 'gemini-1.5-flash'
+# Kita tembak langsung ke API v1 (Stabil)
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
 
 SYS_INSTRUCT = (
     "Kamu adalah Joni, manusia asli yang pakar film dan sangat ramah. "
-    "Bicaralah seperti teman nongkrong, gunakan banyak emotikon. "
-    "Jangan pernah bilang kamu AI atau bot. "
+    "Bicaralah seperti teman nongkrong, gunakan banyak emotikon. Jangan bilang kamu AI. "
     "Kalau ada yang tanya film, ceritakan sinopsis dan detailnya dengan asik. "
     "Di chat personal, langsung jawab. Di grup, panggil 'sob' kalau di-reply."
 )
@@ -33,7 +29,23 @@ def admin_button():
     markup.add(types.InlineKeyboardButton("☎️ Chat Admin", url="https://t.me/filmberbobot"))
     return markup
 
-# --- [ FUNGSI IMDB ] ---
+def get_gemini_response(user_text):
+    payload = {
+        "contents": [{
+            "parts": [{"text": f"{SYS_INSTRUCT}\n\nPertanyaan user: {user_text}"}]
+        }]
+    }
+    headers = {'Content-Type': 'application/json'}
+    try:
+        response = requests.post(GEMINI_URL, json=payload, headers=headers)
+        data = response.json()
+        # Mengambil teks jawaban dari struktur JSON Gemini
+        return data['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        print(f"Error API: {e}")
+        return None
+
+# --- [ FUNGSI TMDB ] ---
 def get_tmdb_detail(m_id, u_name):
     url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
     try:
@@ -64,7 +76,7 @@ def get_tmdb_detail(m_id, u_name):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     nama = message.from_user.first_name
-    bot.reply_to(message, f"Eh, Kak {nama}! 👋 Mau tanya film apa hari ini? Ketik judulnya ya, atau pake /imdb biar makin keren infonya! Oiya cek /rules juga ya. 🎬", reply_markup=admin_button())
+    bot.reply_to(message, f"Eh, Kak {nama}! 👋 Mau tanya film apa hari ini? Ketik judulnya ya, atau pake /imdb biar makin keren infonya! 🎬", reply_markup=admin_button())
 
 @bot.message_handler(commands=['rules'])
 def send_rules(message):
@@ -97,7 +109,7 @@ def handle_movie_request(message):
     text = message.text.lower().replace("#request", "").strip()
     words = text.split()
     if len(words) < 2:
-        bot.reply_to(message, "Format salah Kak! Harus `#request Judul Tahun`. Contoh: `#request Avatar 2022`.")
+        bot.reply_to(message, "Format salah Kak! Harus `#request Judul Tahun`.")
     else:
         bot.reply_to(message, f"Sip, request film {text} sudah Joni simpan ya! 👌")
         bot.forward_message(message.from_user.id, message.chat.id, message.message_id)
@@ -108,13 +120,10 @@ def chat_ai(message):
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
     if is_private or (is_reply and "sob" in message.text.lower()):
-        try:
-            # INI KUNCINYA: Jangan pake models/ dan jangan biarkan library pilih v1beta
-            model = genai.GenerativeModel(MODEL_NAME)
-            response = model.generate_content(f"{SYS_INSTRUCT}\n\nPertanyaan user: {message.text}")
-            bot.reply_to(message, f"Kak {message.from_user.first_name}, {response.text}", reply_markup=admin_button())
-        except Exception as e:
-            print(f"Error fatal: {e}")
+        answer = get_gemini_response(message.text)
+        if answer:
+            bot.reply_to(message, f"Kak {message.from_user.first_name}, {answer}", reply_markup=admin_button())
+        else:
             bot.reply_to(message, "Duh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi ya! 🙏")
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
