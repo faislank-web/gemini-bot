@@ -1,5 +1,4 @@
+flask
 pyTelegramBotAPI
 requests
-flask
 pytz
-gunicorn
