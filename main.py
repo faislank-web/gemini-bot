@@ -10,13 +10,13 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ KONFIGURASI AI ] ---
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+# --- [ PERBAIKAN KRUSIAL: PAKAI v1 (STABIL) ] ---
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
 
 SYS_INSTRUCT = (
     "Kamu adalah Joni, manusia asli pakar film yang asik. "
     "Bicaralah seperti teman akrab dengan banyak emotikon. "
-    "Jangan bilang kamu AI. Di chat personal langsung jawab santai. "
+    "Jangan bilang kamu AI atau bot. Di chat personal langsung jawab santai. "
     "Di grup panggil 'sob' kalau di-reply."
 )
 
@@ -29,21 +29,20 @@ def admin_button():
     return markup
 
 def get_gemini_response(user_text):
-    # Perbaikan Struktur JSON (Standard Google)
     payload = {
         "contents": [{
             "parts": [{"text": f"{SYS_INSTRUCT}\n\nPertanyaan user: {user_text}"}]
         }]
     }
     try:
+        # Tembak langsung ke API v1 Stabil
         response = requests.post(GEMINI_URL, json=payload)
         data = response.json()
         
-        # Cek apakah ada jawaban atau diblokir
         if 'candidates' in data and data['candidates']:
             return data['candidates'][0]['content']['parts'][0]['text']
         else:
-            print(f"DEBUG ERROR: {data}") # Ini biar kita tahu isi error aslinya di log
+            print(f"DEBUG ERROR: {data}")
             return None
     except Exception as e:
         print(f"Error Koneksi: {e}")
@@ -115,7 +114,7 @@ def handle_movie_request(message):
     if len(words) < 2:
         bot.reply_to(message, "Format salah Kak! Harus `#request Judul Tahun`.")
     else:
-        bot.reply_to(message, f"Sip, request film {text} sudah Joni simpan ya! 👌")
+        bot.reply_to(message, f"Sip Kak {message.from_user.first_name}, request film {text} sudah Joni simpan ya! 👌")
         bot.forward_message(message.from_user.id, message.chat.id, message.message_id)
 
 @bot.message_handler(func=lambda m: True)
@@ -128,7 +127,7 @@ def chat_ai(message):
         if answer:
             bot.reply_to(message, f"Kak {message.from_user.first_name}, {answer}", reply_markup=admin_button())
         else:
-            bot.reply_to(message, "Aduh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi sedetik lagi ya! 🙏")
+            bot.reply_to(message, "Duh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi sedetik lagi ya! 🙏")
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
