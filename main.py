@@ -2,7 +2,7 @@ import os
 import requests
 import telebot
 from telebot import types
-import google.generativeai as genai  # Kembali ke cara lama yang berhasil
+import google.generativeai as genai
 from flask import Flask, request
 
 # --- [ DATA AKSES ] ---
@@ -11,9 +11,10 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ KONFIGURASI AI (CARA CMD) ] ---
+# --- [ KONFIGURASI AI ] ---
 genai.configure(api_key=GEMINI_KEY)
-# Di cara lama, kita TIDAK pakai 'models/' di depan
+
+# DAFTAR MODEL (Tanpa prefix models/ karena library akan menambahkannya sendiri)
 MODEL_LIST = ['gemini-1.5-flash', 'gemini-1.5-pro']
 
 SYS_INSTRUCT = (
@@ -31,6 +32,7 @@ def admin_button():
     markup.add(types.InlineKeyboardButton("☎️ Chat Admin", url="https://t.me/filmberbobot"))
     return markup
 
+# --- [ FUNGSI TMDB ] ---
 def get_tmdb_detail(m_id, u_name):
     url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
     try:
@@ -131,8 +133,11 @@ def chat_ai(message):
         response_text = None
         for model_name in MODEL_LIST:
             try:
-                # PAKAI CARA LAMA YANG STABIL
-                model = genai.GenerativeModel(model_name=model_name, system_instruction=SYS_INSTRUCT)
+                # PERBAIKAN KRUSIAL: Tambahkan prefix 'models/' secara manual untuk memancing API yang benar
+                model = genai.GenerativeModel(
+                    model_name=f"models/{model_name}", 
+                    system_instruction=SYS_INSTRUCT
+                )
                 response = model.generate_content(message.text)
                 if response and response.text:
                     response_text = response.text
