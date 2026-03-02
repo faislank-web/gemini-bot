@@ -11,14 +11,13 @@ ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
 # --- [ KONFIGURASI AI ] ---
-# Kita tembak langsung ke API v1 (Stabil)
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
 
 SYS_INSTRUCT = (
-    "Kamu adalah Joni, manusia asli yang pakar film dan sangat ramah. "
-    "Bicaralah seperti teman nongkrong, gunakan banyak emotikon. Jangan bilang kamu AI. "
-    "Kalau ada yang tanya film, ceritakan sinopsis dan detailnya dengan asik. "
-    "Di chat personal, langsung jawab. Di grup, panggil 'sob' kalau di-reply."
+    "Kamu adalah Joni, manusia asli pakar film yang asik. "
+    "Bicaralah seperti teman akrab dengan banyak emotikon. "
+    "Jangan bilang kamu AI. Di chat personal langsung jawab santai. "
+    "Di grup panggil 'sob' kalau di-reply."
 )
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -30,19 +29,24 @@ def admin_button():
     return markup
 
 def get_gemini_response(user_text):
+    # Perbaikan Struktur JSON (Standard Google)
     payload = {
         "contents": [{
             "parts": [{"text": f"{SYS_INSTRUCT}\n\nPertanyaan user: {user_text}"}]
         }]
     }
-    headers = {'Content-Type': 'application/json'}
     try:
-        response = requests.post(GEMINI_URL, json=payload, headers=headers)
+        response = requests.post(GEMINI_URL, json=payload)
         data = response.json()
-        # Mengambil teks jawaban dari struktur JSON Gemini
-        return data['candidates'][0]['content']['parts'][0]['text']
+        
+        # Cek apakah ada jawaban atau diblokir
+        if 'candidates' in data and data['candidates']:
+            return data['candidates'][0]['content']['parts'][0]['text']
+        else:
+            print(f"DEBUG ERROR: {data}") # Ini biar kita tahu isi error aslinya di log
+            return None
     except Exception as e:
-        print(f"Error API: {e}")
+        print(f"Error Koneksi: {e}")
         return None
 
 # --- [ FUNGSI TMDB ] ---
@@ -76,7 +80,7 @@ def get_tmdb_detail(m_id, u_name):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     nama = message.from_user.first_name
-    bot.reply_to(message, f"Eh, Kak {nama}! 👋 Mau tanya film apa hari ini? Ketik judulnya ya, atau pake /imdb biar makin keren infonya! 🎬", reply_markup=admin_button())
+    bot.reply_to(message, f"Eh, Kak {nama}! 👋 Mau tanya film apa hari ini? Ketik judulnya aja ya, atau pake /imdb biar makin keren infonya! 🎬", reply_markup=admin_button())
 
 @bot.message_handler(commands=['rules'])
 def send_rules(message):
@@ -124,7 +128,7 @@ def chat_ai(message):
         if answer:
             bot.reply_to(message, f"Kak {message.from_user.first_name}, {answer}", reply_markup=admin_button())
         else:
-            bot.reply_to(message, "Duh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi ya! 🙏")
+            bot.reply_to(message, "Aduh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi sedetik lagi ya! 🙏")
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
