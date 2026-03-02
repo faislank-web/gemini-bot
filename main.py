@@ -1,5 +1,4 @@
 import os
-import sys
 import requests
 import telebot
 from telebot import types
@@ -10,102 +9,135 @@ from flask import Flask, request
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
+TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# Inisialisasi AI
+# --- [ KONFIGURASI AI ] ---
 genai.configure(api_key=GEMINI_KEY)
 instruction = (
-    "Kamu adalah pakar film profesional dengan data IMDB lengkap. "
-    "Jangan pernah awali jawaban dengan kata 'Halo'. "
-    "Selalu panggil 'sob' di akhir kalimat dan bersikap cerdas."
+    "Kamu adalah pakar film profesional yang terhubung ke data pencarian luas. "
+    "Berikan informasi film terbaru (2025-2026) maupun lama, sinopsis, pemeran, dan sutradara. "
+    "Jangan awali dengan 'Halo'. Jawab dengan cerdas dan panggil 'sob' jika di grup."
 )
 model_ai = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
 
-# Memory Chat tiap user
 user_sessions = {}
-
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
 # --- [ FUNGSI TOMBOL ADMIN ] ---
 def admin_button():
     markup = types.InlineKeyboardMarkup()
-    btn = types.InlineKeyboardButton("Hubungi Admin", url="https://t.me/filmberbobot")
+    btn = types.InlineKeyboardButton("☎️ Hubungi Admin", url="https://t.me/filmberbobot")
     markup.add(btn)
     return markup
 
-def get_user_name_from_obj(user_obj):
-    name = user_obj.first_name
-    return name if name else user_obj.username
+def get_user_name(message):
+    name = message.from_user.first_name
+    return name if name else message.from_user.username
 
-# --- [ HANDLER: MEMBER BARU MASUK ] ---
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome_new_member(message):
-    bot_id = bot.get_me().id
-    for member in message.new_chat_members:
-        # Jangan menyapa diri sendiri (bot)
-        if member.id == bot_id:
-            continue
+# --- [ LOGIKA DETAIL FILM (SESUAI SKRIP BERHASIL) ] ---
+def get_tmdb_detail(m_id, u_name):
+    url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
+    try:
+        res = requests.get(url).json()
+        p_path = res.get('poster_path')
+        p_url = f"https://image.tmdb.org/t/p/w500{p_path}" if p_path else None
         
-        user_name = get_user_name_from_obj(member)
-        welcome_text = (
-            f"Kak {user_name}, selamat datang di grup sob!\n\n"
-            "Saya adalah pakar film di sini. Kalau butuh info rating atau rekomendasi film IMDB, "
-            "silakan reply pesan saya dan tambahkan kata 'sob' ya!"
+        title = res.get('title', 'Unknown').upper()
+        year = res.get('release_date', '????')[:4]
+        rating = res.get('vote_average', 0)
+        stars = "⭐" * int(rating/2) if rating > 0 else "🌑"
+        genres = ", ".join([g['name'] for g in res.get('genres', [])]) or "N/A"
+        cast = ", ".join([c['name'] for c in res.get('credits', {}).get('cast', [])[:3]]) or "N/A"
+        runtime = f"{res.get('runtime', 0)} Menit"
+        plot = res.get('overview', 'Sinopsis belum tersedia.')
+        
+        caption = (
+            f"🎬 **{title}** ({year})\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🌟 **RATING :** **{rating:.1f}/10** {stars}\n"
+            f"🎭 **GENRE  :** **{genres}**\n"
+            f"⏱ **DURASI :** **{runtime}**\n"
+            f"👥 **CAST    :** **{cast}**\n\n"
+            f"📖 **SINOPSIS :**\n"
+            f"_{plot[:450] + '...' if len(plot) > 450 else plot}_\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 **Requested by:** `Kak {u_name}`"
         )
-        bot.send_message(message.chat.id, welcome_text, reply_markup=admin_button())
+        return caption, p_url
+    except:
+        return None, None
 
-# --- [ HANDLER: /IMDB ] ---
-@bot.message_handler(commands=['imdb'])
-def search_imdb(message):
-    user_name = get_user_name_from_obj(message.from_user)
+# --- [ HANDLER /IMDB & /SOB ] ---
+@bot.message_handler(commands=['imdb', 'sob'])
+def search_movie(message):
+    u_name = get_user_name(message)
     query = message.text.split(' ', 1)[1] if len(message.text.split(' ')) > 1 else None
     
     if not query:
-        bot.reply_to(message, f"Kak {user_name}, mau cari film apa sob? Contoh: /imdb Batman", reply_markup=admin_button())
+        bot.reply_to(message, f"Kak {u_name}, ketik judul filmnya sob!", reply_markup=admin_button())
         return
-    
-    prompt = f"Berikan daftar 3-5 judul film yang mirip dengan '{query}' lengkap dengan rating IMDB."
+
     try:
-        response = model_ai.generate_content(prompt)
-        text = f"🎬 **Kak {user_name}, ini hasil pencarian IMDB untuk '{query}':**\n\n{response.text}"
-        bot.reply_to(message, text, reply_markup=admin_button())
+        res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={query}&language=id-ID").json()
+        if not res.get('results'):
+            bot.reply_to(message, f"❌ Film **{query}** tidak ditemukan, Kak {u_name}.", reply_markup=admin_button())
+            return
+
+        markup = types.InlineKeyboardMarkup()
+        for m in res['results'][:6]:
+            label = f"🎬 {m.get('title')} ({m.get('release_date','????')[:4]})"
+            markup.add(types.InlineKeyboardButton(label, callback_data=f"m_{m['id']}"))
+        
+        bot.reply_to(message, f"🔍 **HASIL PENCARIAN :** `{query.upper()}`", reply_markup=markup)
     except:
-        bot.reply_to(message, f"Database film lagi penuh nih Kak {user_name}, coba lagi nanti ya sob!", reply_markup=admin_button())
+        bot.reply_to(message, "Gagal mengambil data dari TMDB, Kak!", reply_markup=admin_button())
 
-# --- [ HANDLER: CHAT AI (Reply + 'Sob') ] ---
-@bot.message_handler(func=lambda m: True)
-def ai_chat(message):
-    teks = message.text.lower() if message.text else ""
-    user_id = message.from_user.id
-    user_name = get_user_name_from_obj(message.from_user)
+@bot.callback_query_handler(func=lambda call: call.data.startswith('m_'))
+def callback_detail(call):
+    m_id = call.data.split('_')[1]
+    u_name = get_user_name(call)
+    cap, post = get_tmdb_detail(m_id, u_name)
     
-    # Syarat: Harus ada kata 'sob' DAN membalas pesan bot
-    if "sob" in teks and message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id:
-        try:
-            if user_id not in user_sessions:
-                user_sessions[user_id] = model_ai.start_chat(history=[])
-            
-            chat_session = user_sessions[user_id]
-            response = chat_session.send_message(message.text)
-            
-            final_text = f"Kak {user_name}, {response.text}"
-            bot.reply_to(message, final_text, reply_markup=admin_button())
-        except:
-            bot.reply_to(message, f"Aduh Kak {user_name}, otak saya lagi ngebul nih sob!", reply_markup=admin_button())
+    if cap:
+        if post:
+            bot.send_photo(call.message.chat.id, post, caption=cap, reply_markup=admin_button())
+        else:
+            bot.send_message(call.message.chat.id, cap, reply_markup=admin_button())
+        bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- [ WEBHOOK SETUP ] ---
+# --- [ HANDLER CHAT AI ] ---
+@bot.message_handler(func=lambda m: True)
+def chat_ai(message):
+    u_id = message.from_user.id
+    u_name = get_user_name(message)
+    teks = message.text.lower()
+    is_private = message.chat.type == 'private'
+    
+    # Syarat: Di Private Chat (PC) bebas, di grup harus Reply Bot + ada kata 'sob'
+    is_reply_to_me = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
+    should_respond = is_private or ("sob" in teks and is_reply_to_me)
+
+    if should_respond:
+        try:
+            if u_id not in user_sessions:
+                user_sessions[u_id] = model_ai.start_chat(history=[])
+            
+            response = user_sessions[u_id].send_message(message.text)
+            bot.reply_to(message, f"Kak {u_name}, {response.text}", reply_markup=admin_button())
+        except:
+            bot.reply_to(message, f"Lagi pening nih Kak {u_name}, tanya lagi nanti ya!", reply_markup=admin_button())
+
+# --- [ SETUP WEBHOOK ] ---
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
+        bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
         return "OK", 200
     return "Forbidden", 403
 
 @app.route('/')
 def setup():
-    if not ZEABUR_URL: return "Set ZEABUR_WEB_URL!", 500
     clean_url = ZEABUR_URL.replace("https://", "").replace("http://", "").strip("/")
     bot.remove_webhook()
     bot.set_webhook(url=f"https://{clean_url}/{TELEGRAM_TOKEN}")
