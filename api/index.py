@@ -4,53 +4,42 @@ import telebot
 from flask import Flask, request
 
 # --- [ KONFIGURASI ] ---
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-MY_USER_ID = os.getenv("MY_USER_ID")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+G_KEY = os.getenv("GEMINI_API_KEY")
+ADMIN = os.getenv("MY_USER_ID")
 
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+G_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={G_KEY}"
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-def get_response(text, name):
-    prompt = (
-        f"Kamu Joni, manusia asli pakar film di grup @SheJua. JANGAN SEBUT DIRIMU AI/BOT. "
-        f"Sapa Kak {name}. Jawab santai sebagai teman nongkrong. Pertanyaan: {text}"
-    )
+def get_ai(text, name):
+    prompt = f"Kamu Joni, manusia pakar film di @SheJua. Jawab santai. User: {name}. Tanya: {text}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        res = requests.post(GEMINI_URL, json=payload, timeout=15)
-        data = res.json()
-        if 'candidates' in data and data['candidates']:
-            return data['candidates'][0]['content']['parts'][0]['text']
-        return f"Waduh Kak {name}, Joni lagi pening dikit habis maraton film. Coba lagi ya! 🍿"
+        res = requests.post(G_URL, json=payload, timeout=10)
+        return res.json()['candidates'][0]['content']['parts'][0]['text']
     except:
-        return f"Sori sob, Joni lagi sibuk sortir film terbaru. Tunggu bentar ya! 🙏"
+        return "Aduh sob, Joni lagi pening. Coba lagi ya! 🍿"
 
-# --- [ HANDLER VERCEL ] ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        if request.headers.get('content-type') == 'application/json':
-            json_string = request.get_data().decode('utf-8')
-            update = telebot.types.Update.de_json(json_string)
-            bot.process_new_updates([update])
-            return "OK", 200
+        update = telebot.types.Update.de_json(request.get_json(force=True))
+        bot.process_new_updates([update])
+        return "OK", 200
     return "Joni @SheJua is Online! 🚀", 200
 
-# --- [ FITUR CHAT ] ---
 @bot.message_handler(func=lambda m: True)
-def handle_messages(m):
-    # Joni nyaut di Private (Admin) atau di Grup jika ada kata 'sob' atau di-reply
-    is_private = m.chat.type == 'private' and str(m.from_user.id) == str(MY_USER_ID)
-    is_group = m.chat.type in ['group', 'supergroup'] and ("sob" in m.text.lower() or (m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id))
+def reply(m):
+    # Nyaut di Private (Admin) atau di Grup (kata 'sob' / reply)
+    is_admin = m.chat.type == 'private' and str(m.from_user.id) == str(ADMIN)
+    is_sob = "sob" in m.text.lower() or (m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id)
     
-    if is_private or is_group:
+    if is_admin or is_sob:
         bot.send_chat_action(m.chat.id, 'typing')
-        jawaban = get_response(m.text, m.from_user.first_name)
-        bot.reply_to(m, jawaban)
+        bot.reply_to(m, get_ai(m.text, m.from_user.first_name))
 
-# --- [ MANTRA SAKTI ] ---
+# WAJIB: Pintu masuk Vercel
 def handler(request):
     return app(request)
