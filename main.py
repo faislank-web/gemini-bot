@@ -14,10 +14,9 @@ TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 # --- [ KONFIGURASI AI ] ---
 genai.configure(api_key=GEMINI_KEY)
 instruction = (
-    "Kamu adalah pakar film profesional dengan akses info film terbaru 2025-2026. "
-    "Berikan sinopsis, pemeran, dan sutradara dengan cerdas. "
-    "Jangan awali dengan 'Halo'. Panggil 'sob' hanya jika di grup. "
-    "Jika ditanya di chat personal, jawablah secara langsung dan detail."
+    "Kamu adalah pakar film profesional. Berikan info film terbaru, sinopsis, pemeran, dan sutradara. "
+    "Jangan awali dengan 'Halo'. Di chat personal jawab langsung dengan cerdas. "
+    "Di grup, panggil 'sob' dan hanya jawab jika di-reply."
 )
 model_ai = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
 
@@ -33,7 +32,7 @@ def admin_button():
 def get_user_name(message):
     return message.from_user.first_name if message.from_user.first_name else message.from_user.username
 
-# --- [ LOGIKA DETAIL FILM - TAMPILAN RAPI ] ---
+# --- [ LOGIKA DETAIL FILM - CLEAN TEXT ] ---
 def get_tmdb_detail(m_id, u_name):
     url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
     try:
@@ -47,38 +46,36 @@ def get_tmdb_detail(m_id, u_name):
         stars = "⭐" * int(rating/2) if rating > 0 else "🌑"
         genres = ", ".join([g['name'] for g in res.get('genres', [])])
         cast = ", ".join([c['name'] for c in res.get('credits', {}).get('cast', [])[:3]])
-        runtime = f"{res.get('runtime', 0)} Menit"
         plot = res.get('overview', 'Sinopsis belum tersedia.')
 
-        # Caption Tanpa Bold Berlebih agar tidak berantakan
+        # Tampilan Bersih: Bold hanya pada judul
         caption = (
-            f"🎬 {title} ({year})\n"
+            f"🎬 **{title}** ({year})\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🌟 Rating : {rating:.1f}/10 {stars}\n"
-            f"🎭 Genre  : {genres}\n"
-            f"⏱ Durasi : {runtime}\n"
-            f"👥 Cast    : {cast}\n\n"
+            f"🎭 Genre : {genres}\n"
+            f"👥 Cast : {cast}\n\n"
             f"📖 SINOPSIS :\n"
-            f"{plot[:450] + '...' if len(plot) > 450 else plot}\n\n"
+            f"{plot[:500] + '...' if len(plot) > 500 else plot}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 Requested by: Kak {u_name}"
         )
         return caption, p_url
     except:
-        return None, None
+        return "Gagal mengambil detail film.", None
 
 @bot.message_handler(commands=['imdb', 'sob'])
 def search_movie(message):
     u_name = get_user_name(message)
     query = message.text.split(' ', 1)[1] if len(message.text.split(' ')) > 1 else None
     if not query:
-        bot.reply_to(message, f"Kak {u_name}, ketik judul filmnya!", reply_markup=admin_button())
+        bot.reply_to(message, f"Kak {u_name}, ketik judul filmnya!")
         return
 
     try:
         res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={query}&language=id-ID").json()
         if not res.get('results'):
-            bot.reply_to(message, f"❌ Film {query} tidak ditemukan.", reply_markup=admin_button())
+            bot.reply_to(message, f"❌ Film {query} tidak ditemukan.")
             return
 
         markup = types.InlineKeyboardMarkup()
@@ -88,7 +85,7 @@ def search_movie(message):
         
         bot.reply_to(message, f"🔍 HASIL PENCARIAN : {query.upper()}", reply_markup=markup)
     except:
-        bot.reply_to(message, "Database sedang sibuk, coba lagi nanti ya!", reply_markup=admin_button())
+        bot.reply_to(message, "Gagal akses database.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('m_'))
 def callback_detail(call):
@@ -96,27 +93,27 @@ def callback_detail(call):
     u_name = get_user_name(call)
     cap, post = get_tmdb_detail(m_id, u_name)
     if cap:
-        if post: bot.send_photo(call.message.chat.id, post, caption=cap, reply_markup=admin_button())
-        else: bot.send_message(call.message.chat.id, cap, reply_markup=admin_button())
+        if post: bot.send_photo(call.message.chat.id, post, caption=cap, reply_markup=admin_button(), parse_mode='Markdown')
+        else: bot.send_message(call.message.chat.id, cap, reply_markup=admin_button(), parse_mode='Markdown')
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
 @bot.message_handler(func=lambda m: True)
 def chat_ai(message):
     u_id = message.from_user.id
     u_name = get_user_name(message)
-    teks = message.text.lower()
     is_private = message.chat.type == 'private'
-    is_reply_to_me = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
     
-    if is_private or ("sob" in teks and is_reply_to_me):
+    # Syarat: Di Private bebas, di Grup harus reply & ada kata 'sob'
+    should_respond = is_private or ("sob" in message.text.lower() and message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id)
+
+    if should_respond:
         try:
             if u_id not in user_sessions:
                 user_sessions[u_id] = model_ai.start_chat(history=[])
             response = user_sessions[u_id].send_message(message.text)
             bot.reply_to(message, f"Kak {u_name}, {response.text}", reply_markup=admin_button())
-        except Exception as e:
-            # Jika AI error, berikan jawaban cerdas manual sementara
-            bot.reply_to(message, f"Kak {u_name}, sepertinya saya butuh waktu untuk berpikir. Tanya film lain dulu ya!", reply_markup=admin_button())
+        except:
+            bot.reply_to(message, f"Maaf Kak {u_name}, saya sedang memproses info film terbaru. Coba tanya lagi ya!", reply_markup=admin_button())
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
