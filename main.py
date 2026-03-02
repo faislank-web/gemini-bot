@@ -73,4 +73,64 @@ def get_tmdb_detail(m_id, u_name):
             f"--------------------------------------\n"
             f"👤 User: Kak {u_name}"
         )
+        return caption, p_url
+    except: return "Gagal memuat detail film.", None
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    nama = message.from_user.first_name
+    bot.reply_to(message, f"Eh, Kak {nama}! 👋 Mau tanya film apa hari ini? Ketik judulnya aja ya, atau pake /imdb biar makin keren infonya! 🎬", reply_markup=movie_buttons())
+
+@bot.message_handler(commands=['imdb'])
+def search_movie(message):
+    query = message.text.split(' ', 1)[1] if len(message.text.split(' ')) > 1 else None
+    if not query:
+        bot.reply_to(message, "Ketik judul filmnya Kak! Contoh: /imdb Avatar")
         return
+    res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={query}&language=id-ID").json()
+    if not res.get('results'):
+        bot.reply_to(message, "Nggak ketemu filmnya Kak. 😅")
+        return
+    markup = types.InlineKeyboardMarkup()
+    for m in res['results'][:5]:
+        markup.add(types.InlineKeyboardButton(f"🎬 {m.get('title')} ({m.get('release_date','????')[:4]})", callback_data=f"m_{m['id']}"))
+    bot.reply_to(message, f"🔍 HASIL CARI: {query.upper()}", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('m_'))
+def callback_detail(call):
+    cap, post = get_tmdb_detail(call.data.split('_')[1], call.from_user.first_name)
+    if post: bot.send_photo(call.message.chat.id, post, caption=cap, parse_mode="Markdown", reply_markup=movie_buttons())
+    else: bot.send_message(call.message.chat.id, cap, parse_mode="Markdown", reply_markup=movie_buttons())
+
+@bot.message_handler(func=lambda m: "#request" in m.text.lower())
+def handle_movie_request(message):
+    text = message.text.lower().replace("#request", "").strip()
+    if len(text.split()) < 2:
+        bot.reply_to(message, "Duh Kak, request harus pake tahun ya. Contoh: `#request Avatar 2022`.")
+    else:
+        bot.reply_to(message, f"Sip Kak {message.from_user.first_name}, request film {text} sudah Joni simpan ya! 👌")
+        bot.forward_message(message.from_user.id, message.chat.id, message.message_id)
+
+@bot.message_handler(func=lambda m: True)
+def chat_ai(message):
+    is_private = message.chat.type == 'private'
+    is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
+    if is_private or (is_reply and "sob" in message.text.lower()):
+        answer = get_gemini_response(message.text)
+        if answer: bot.reply_to(message, f"Kak {message.from_user.first_name}, {answer}", reply_markup=movie_buttons())
+        else: bot.reply_to(message, "Duh Kak, Joni lagi dipanggil admin sebentar. Coba tanya lagi ya! 🙏")
+
+@app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
+def get_message():
+    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
+    return "OK", 200
+
+@app.route('/')
+def setup():
+    url = ZEABUR_URL.replace("https://", "").replace("http://", "").strip("/")
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://{url}/{TELEGRAM_TOKEN}")
+    return "<h1>📍 Upload Complete Selamat Menyaksikan</h1>", 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
