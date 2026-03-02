@@ -2,7 +2,7 @@ import os
 import requests
 import telebot
 from telebot import types
-import google.generativeai as genai
+from google import genai
 from flask import Flask, request
 
 # --- [ DATA AKSES ] ---
@@ -11,15 +11,14 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ KONFIGURASI AI ] ---
-genai.configure(api_key=GEMINI_KEY)
-instruction = (
+# --- [ KONFIGURASI AI TERBARU ] ---
+client = genai.Client(api_key=GEMINI_KEY)
+SYS_INSTRUCT = (
     "Kamu adalah pakar film profesional tahun 2026. Jawablah dengan cerdas dan detail. "
     "Berikan sinopsis, pemeran, dan sutradara jika ditanya soal film. "
     "Jangan gunakan kata 'Halo'. Di chat personal, langsung jawab. "
     "Di grup, panggil 'sob' dan jawab jika di-reply."
 )
-model_ai = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
@@ -29,7 +28,6 @@ def admin_button():
     markup.add(types.InlineKeyboardButton("☎️ Hubungi Admin", url="https://t.me/filmberbobot"))
     return markup
 
-# --- [ SEARCH FILM TMDB ] ---
 def get_tmdb_detail(m_id, u_name):
     url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
     try:
@@ -81,7 +79,6 @@ def callback_detail(call):
     else: bot.send_message(call.message.chat.id, cap, reply_markup=admin_button())
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- [ CHAT AI: LANGSUNG JAWAB (ANTI-BODOH) ] ---
 @bot.message_handler(func=lambda m: True)
 def chat_ai(message):
     is_private = message.chat.type == 'private'
@@ -89,10 +86,15 @@ def chat_ai(message):
 
     if is_private or (is_reply and "sob" in message.text.lower()):
         try:
-            # Menggunakan generate_content langsung (Tanpa History) agar hemat memori Zeabur
-            response = model_ai.generate_content(message.text)
+            # Menggunakan Client Baru (google-genai)
+            response = client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=message.text,
+                config={'system_instruction': SYS_INSTRUCT}
+            )
             bot.reply_to(message, f"Kak {message.from_user.first_name}, {response.text}", reply_markup=admin_button())
-        except:
+        except Exception as e:
+            print(f"Error: {e}")
             bot.reply_to(message, "Lagi sibuk nih Kak, coba tanya lagi ya!", reply_markup=admin_button())
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
