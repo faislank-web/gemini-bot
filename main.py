@@ -11,8 +11,11 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ KONFIGURASI AI TERBARU ] ---
+# --- [ KONFIGURASI AI ] ---
 client = genai.Client(api_key=GEMINI_KEY)
+# Daftar model cadangan jika flash error
+MODEL_LIST = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp']
+
 SYS_INSTRUCT = (
     "Kamu adalah pakar film profesional tahun 2026. Jawablah dengan cerdas dan detail. "
     "Berikan sinopsis, pemeran, dan sutradara jika ditanya soal film. "
@@ -85,17 +88,25 @@ def chat_ai(message):
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
     if is_private or (is_reply and "sob" in message.text.lower()):
-        try:
-            # Menggunakan Client Baru (google-genai)
-            response = client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=message.text,
-                config={'system_instruction': SYS_INSTRUCT}
-            )
-            bot.reply_to(message, f"Kak {message.from_user.first_name}, {response.text}", reply_markup=admin_button())
-        except Exception as e:
-            print(f"Error: {e}")
-            bot.reply_to(message, "Lagi sibuk nih Kak, coba tanya lagi ya!", reply_markup=admin_button())
+        # Fitur Pilih Model Otomatis
+        response_text = None
+        for model_name in MODEL_LIST:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=message.text,
+                    config={'system_instruction': SYS_INSTRUCT}
+                )
+                response_text = response.text
+                break # Jika berhasil, keluar dari loop
+            except Exception as e:
+                print(f"Gagal pakai {model_name}, mencoba model lain... Error: {e}")
+                continue
+        
+        if response_text:
+            bot.reply_to(message, f"Kak {message.from_user.first_name}, {response_text}", reply_markup=admin_button())
+        else:
+            bot.reply_to(message, "Aduh Kak, semua otak AI lagi penuh. Coba sebentar lagi ya!", reply_markup=admin_button())
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
