@@ -1,9 +1,11 @@
-import os, requests, telebot, datetime, pytz, re, random
+import os
+import requests
+import telebot
 from flask import Flask, request
 
-# --- [ AMBIL DATA DARI VERCEL SETTINGS ] ---
+# --- [ KONFIGURASI ] ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 MY_USER_ID = os.getenv("MY_USER_ID")
 
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
@@ -22,28 +24,33 @@ def get_response(text, name):
         data = res.json()
         if 'candidates' in data and data['candidates']:
             return data['candidates'][0]['content']['parts'][0]['text']
-        return f"Waduh Kak {name}, Joni lagi sibuk sortir film. Coba lagi ya! 🍿"
+        return f"Waduh Kak {name}, Joni lagi pening dikit habis maraton film. Coba lagi ya! 🍿"
     except:
-        return f"Sori sob, Joni lagi pening dikit. Coba lagi ya! 🙏"
+        return f"Sori sob, Joni lagi sibuk sortir film terbaru. Tunggu bentar ya! 🙏"
 
-# --- [ HANDLER UTAMA ] ---
-@app.route('/', methods=['POST', 'GET'])
+# --- [ HANDLER VERCEL ] ---
+@app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        update = telebot.types.Update.de_json(request.get_json())
-        bot.process_new_updates([update])
-        return "OK", 200
+        if request.headers.get('content-type') == 'application/json':
+            json_string = request.get_data().decode('utf-8')
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return "OK", 200
     return "Joni @SheJua is Online! 🚀", 200
 
 # --- [ FITUR CHAT ] ---
 @bot.message_handler(func=lambda m: True)
-def group_chat(m):
-    if "sob" in m.text.lower() or (m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id):
+def handle_messages(m):
+    # Joni nyaut di Private (Admin) atau di Grup jika ada kata 'sob' atau di-reply
+    is_private = m.chat.type == 'private' and str(m.from_user.id) == str(MY_USER_ID)
+    is_group = m.chat.type in ['group', 'supergroup'] and ("sob" in m.text.lower() or (m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id))
+    
+    if is_private or is_group:
         bot.send_chat_action(m.chat.id, 'typing')
         jawaban = get_response(m.text, m.from_user.first_name)
         bot.reply_to(m, jawaban)
 
-# --- [ MANTRA SAKTI VERCEL ] ---
-# Tanpa ini, Vercel akan kasih Error 500 terus!
+# --- [ MANTRA SAKTI ] ---
 def handler(request):
     return app(request)
