@@ -2,7 +2,7 @@ import os
 import requests
 import telebot
 from telebot import types
-from google import genai
+import google.generativeai as genai  # Kembali ke cara lama yang berhasil
 from flask import Flask, request
 
 # --- [ DATA AKSES ] ---
@@ -11,10 +11,10 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ KONFIGURASI ] ---
-client = genai.Client(api_key=GEMINI_KEY)
-# PERBAIKAN: Gunakan format lengkap 'models/...' agar tidak 404
-MODEL_LIST = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+# --- [ KONFIGURASI AI (CARA CMD) ] ---
+genai.configure(api_key=GEMINI_KEY)
+# Di cara lama, kita TIDAK pakai 'models/' di depan
+MODEL_LIST = ['gemini-1.5-flash', 'gemini-1.5-pro']
 
 SYS_INSTRUCT = (
     "Kamu adalah Joni, manusia asli yang pakar film dan sangat ramah. "
@@ -131,11 +131,9 @@ def chat_ai(message):
         response_text = None
         for model_name in MODEL_LIST:
             try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=message.text,
-                    config={'system_instruction': SYS_INSTRUCT}
-                )
+                # PAKAI CARA LAMA YANG STABIL
+                model = genai.GenerativeModel(model_name=model_name, system_instruction=SYS_INSTRUCT)
+                response = model.generate_content(message.text)
                 if response and response.text:
                     response_text = response.text
                     break
