@@ -5,20 +5,19 @@ from telebot import types
 import google.generativeai as genai
 from flask import Flask, request
 
-# --- [ AKSES ] ---
+# --- [ DATA AKSES ] ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 ZEABUR_URL = os.environ.get("ZEABUR_WEB_URL")
 TMDB_KEY = "61e2290429798c561450eb56b26de19b"
 
-# --- [ AI CONFIG ] ---
+# --- [ KONFIGURASI AI ] ---
 genai.configure(api_key=GEMINI_KEY)
-# Instruksi lebih tajam agar tidak 'bodoh'
 instruction = (
-    "Kamu adalah pakar film jenius. Gunakan data terbaru 2025-2026. "
-    "Berikan sinopsis, sutradara, dan pemeran secara lengkap. "
-    "Jangan gunakan kata 'Halo'. Di chat personal, langsung jawab detail. "
-    "Di grup, panggil 'sob' dan hanya jawab jika di-reply."
+    "Kamu adalah pakar film profesional tahun 2026. Jawablah dengan cerdas dan detail. "
+    "Berikan sinopsis, pemeran, dan sutradara jika ditanya soal film. "
+    "Jangan gunakan kata 'Halo'. Di chat personal, langsung jawab. "
+    "Di grup, panggil 'sob' dan jawab jika di-reply."
 )
 model_ai = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
 
@@ -30,7 +29,7 @@ def admin_button():
     markup.add(types.InlineKeyboardButton("☎️ Hubungi Admin", url="https://t.me/filmberbobot"))
     return markup
 
-# --- [ DETAIL FILM: FORMAT BERSIH ] ---
+# --- [ SEARCH FILM TMDB ] ---
 def get_tmdb_detail(m_id, u_name):
     url = f"https://api.themoviedb.org/3/movie/{m_id}?api_key={TMDB_KEY}&language=id-ID&append_to_response=credits"
     try:
@@ -62,7 +61,7 @@ def get_tmdb_detail(m_id, u_name):
 def search_movie(message):
     query = message.text.split(' ', 1)[1] if len(message.text.split(' ')) > 1 else None
     if not query:
-        bot.reply_to(message, "Ketik judul filmnya Kak!", reply_markup=admin_button())
+        bot.reply_to(message, "Ketik judul filmnya Kak!")
         return
     try:
         res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={query}&language=id-ID").json()
@@ -82,22 +81,19 @@ def callback_detail(call):
     else: bot.send_message(call.message.chat.id, cap, reply_markup=admin_button())
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# --- [ CHAT AI: DENGAN SISTEM ANTI-BODOH ] ---
+# --- [ CHAT AI: LANGSUNG JAWAB (ANTI-BODOH) ] ---
 @bot.message_handler(func=lambda m: True)
 def chat_ai(message):
-    u_name = message.from_user.first_name
     is_private = message.chat.type == 'private'
     is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot.get_me().id
 
     if is_private or (is_reply and "sob" in message.text.lower()):
         try:
-            # Gunakan generate_content langsung agar tidak berat di memori (Anti-Pening)
+            # Menggunakan generate_content langsung (Tanpa History) agar hemat memori Zeabur
             response = model_ai.generate_content(message.text)
-            bot.reply_to(message, f"Kak {u_name}, {response.text}", reply_markup=admin_button())
-        except Exception as e:
-            # Jika API Limit, beri tahu dengan sopan
-            print(f"Error AI: {e}")
-            bot.reply_to(message, f"Aduh Kak {u_name}, otak saya lagi istirahat sebentar sob. Coba chat lagi dalam 1 menit ya!", reply_markup=admin_button())
+            bot.reply_to(message, f"Kak {message.from_user.first_name}, {response.text}", reply_markup=admin_button())
+        except:
+            bot.reply_to(message, "Lagi sibuk nih Kak, coba tanya lagi ya!", reply_markup=admin_button())
 
 @app.route('/' + TELEGRAM_TOKEN, methods=['POST'])
 def get_message():
