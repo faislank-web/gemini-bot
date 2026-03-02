@@ -129,4 +129,11 @@ def get_message():
 
 @app.route('/')
 def setup():
-    if not ZEABUR_
+    if not ZEABUR_URL: return "Set ZEABUR_WEB_URL!", 500
+    clean_url = ZEABUR_URL.replace("https://", "").replace("http://", "").strip("/")
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://{clean_url}/{TELEGRAM_TOKEN}")
+    return "<h1>📍 Upload Complete Selamat Menyaksikan</h1>", 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
