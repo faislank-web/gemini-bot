@@ -1,12 +1,15 @@
-import os, requests, telebot
+import os
+import requests
+import telebot
 from flask import Flask, request
 
-# --- [ KONFIGURASI ] ---
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-G_KEY = os.getenv("GEMINI_API_KEY")
+# --- [ AMBIL DATA DARI ENVIRONMENT ] ---
+TOKEN = "8485819414:AAFuMaapg-DJ6s5FpNjRPFUU6gAr9Cv18aw"
+G_KEY = "AIzaSyDk9JZFNXTAeZW5pqRs2sOnwmONUtsG5FM"
 ADMIN = os.getenv("MY_USER_ID")
 G_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={G_KEY}"
 
+# Inisialisasi
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
@@ -20,22 +23,17 @@ def joni_brain(text, name):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         res = requests.post(G_URL, json=payload, timeout=15)
-        res_json = res.json()
-        return res_json['candidates'][0]['content']['parts'][0]['text']
-    except Exception as e:
-        return f"Aduh sob {name}, Joni lagi pening dikit habis maraton film. Coba lagi ya! 🍿"
+        return res.json()['candidates'][0]['content']['parts'][0]['text']
+    except:
+        return f"Aduh sob {name}, Joni lagi pening dikit. Coba lagi ya! 🍿"
 
-# --- [ ROUTE UTAMA VERCEL ] ---
+# --- [ ROUTE UNTUK VERCEL ] ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        try:
-            # Cara paling aman membaca data JSON di Vercel
-            update = telebot.types.Update.de_json(request.get_json(force=True))
-            bot.process_new_updates([update])
-            return "OK", 200
-        except Exception as e:
-            return str(e), 500
+        update = telebot.types.Update.de_json(request.get_json(force=True))
+        bot.process_new_updates([update])
+        return "OK", 200
     return "Joni @SheJua is Online! 🚀", 200
 
 # --- [ FITUR COMMANDS ] ---
@@ -43,25 +41,22 @@ def index():
 def imdb_info(m):
     query = m.text.replace('/imdb', '').strip()
     if not query:
-        bot.reply_to(m, "Kasih judul filmnya dong sob! Contoh: `/imdb Spiderman`")
+        bot.reply_to(m, "Kasih judul filmnya dong sob! Contoh: `/imdb Inception`")
         return
     bot.send_chat_action(m.chat.id, 'typing')
-    jawaban = joni_brain(f"Berikan info detail IMDB (rating, sinopsis, tahun) untuk film: {query}", m.from_user.first_name)
+    jawaban = joni_brain(f"Berikan info detail IMDB untuk film: {query}", m.from_user.first_name)
     bot.reply_to(m, jawaban)
 
-# --- [ FITUR CHAT OTOMATIS ] ---
 @bot.message_handler(func=lambda m: True)
-def group_chat(m):
-    # Logika: Private (Admin), Kata 'sob', atau Reply ke Joni
-    is_admin = m.chat.type == 'private' and str(m.from_user.id) == str(ADMIN)
+def auto_chat(m):
     is_sob = m.text and "sob" in m.text.lower()
     is_reply = m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id
-
-    if is_admin or is_sob or is_reply:
+    if is_sob or is_reply or m.chat.type == 'private':
         bot.send_chat_action(m.chat.id, 'typing')
         jawaban = joni_brain(m.text, m.from_user.first_name)
         bot.reply_to(m, jawaban)
 
-# --- [ PINTU MASUK VERCEL ] ---
+# --- [ SOLUSI ERROR 500 VERCEL ] ---
+# Baris ini SANGAT PENTING untuk mengatasi error 'issubclass' di log kamu
 def handler(request):
     return app(request)
