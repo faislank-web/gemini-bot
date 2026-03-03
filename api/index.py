@@ -2,107 +2,120 @@ import os, requests, telebot, re
 from flask import Flask, request
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- [ KONFIGURASI AMAN ] ---
+# --- [ KONFIGURASI ] ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 G_KEY = os.getenv("GEMINI_API_KEY")
+TMDB_KEY = "60b54f676451a947d100062a420942d9" 
 G_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={G_KEY}"
 
-# ID KAMU (Pesan Tersimpan)
-TARGET_REQUEST_ID = "8227188993" 
-
+ADMIN_ID = 8227188993 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# --- [ OTAK JONI ] ---
-def joni_brain(text, name, is_imdb=False):
-    if is_imdb:
-        prompt = (f"Halo Joni! Berikan info film lengkap untuk {name} tentang: {text}. "
-                  f"FORMAT WAJIB: 🎬 *Judul (Tahun)*, ⭐️ *Rating*, 📅 *Tgl Rilis*, ⏳ *Durasi*, 🎭 *Genre*, 📝 *Sinopsis (2 kalimat)*. "
-                  f"Gunakan gaya pakar film. JANGAN BERTELE-TELE.")
+# --- [ OTAK JONI: INGATAN PERSONAL ] ---
+def joni_brain(text, name, username, mode="chat"):
+    # Joni diberikan konteks siapa yang bicara agar tidak tertukar
+    if mode == "detail":
+        prompt = (f"Berikan info film sangat lengkap untuk Kak {name} (@{username}). "
+                  f"Detail film: {text}. FORMAT: 🎬 *Judul (Tahun)*, ⭐️ *Rating*, 📅 *Rilis*, ⏳ *Durasi*, 🎭 *Genre*, 📝 *Sinopsis*. "
+                  f"Sapa dia di awal dengan asik.")
     else:
-        prompt = f"Kamu Joni, manusia asli pakar film @SheJua. Sapa Kak {name}. Jawab sangat singkat & gaul: {text}"
+        prompt = (f"Kamu Joni, manusia asli pakar film @SheJua. Kamu sedang ngobrol dengan {name} (@{username}). "
+                  f"JANGAN SEBUT BOT. Jawab sangat singkat & gaul: {text}")
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        res = requests.post(G_URL, json=payload, timeout=25)
+        res = requests.post(G_URL, json=payload, timeout=20)
         return res.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return f"Aduh sob {name}, Joni lagi pening dikit habis maraton film. 🍿"
+    except: return f"Duh sob {name}, Joni lagi nge-lag dikit nih. 🍿"
 
-# --- [ WELCOME MESSAGE ] ---
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome_new_member(m):
-    for user in m.new_chat_members:
-        name = user.first_name
-        pesan = (f"Halo Kak {name}! Selamat datang di @SheJua 🎬\n\n"
-                 f"Kenalin, aku **Joni**, asisten film di sini. Cara panggil aku:\n"
-                 f"🔹 Sebut kata **'sob'** di pesanmu.\n"
-                 f"🔹 Atau langsung **Reply** pesan aku.\n\n"
-                 f"📌 Cek peraturan grup ketik `/rules` ya!")
-        bot.reply_to(m, pesan, parse_mode="Markdown")
-
-# --- [ FITUR #REQUEST ] ---
-@bot.message_handler(func=lambda m: m.text and m.text.startswith('#request'))
-def handle_request(m):
-    # Mencari pola: #request [Judul Bebas] [4 Digit Tahun]
-    pattern = r"#request\s+(.+)\s+(\d{4})"
-    match = re.search(pattern, m.text)
-    
-    if match:
-        judul = match.group(1).strip()
-        tahun = match.group(2)
-        
-        # Kirim Detail ke ID Kamu
-        info_req = (f"📌 **REQUEST FILM BARU**\n\n"
-                    f"👤 **Dari:** {m.from_user.first_name} (@{m.from_user.username})\n"
-                    f"🎬 **Film:** {judul}\n"
-                    f"📅 **Tahun:** {tahun}")
-        
-        try:
-            bot.send_message(TARGET_REQUEST_ID, info_req, parse_mode="Markdown")
-            bot.reply_to(m, f"✅ Sip Kak {m.from_user.first_name}, request **{judul} ({tahun})** sudah Joni terima dan diteruskan ke Admin! Ditunggu ya. 🥂")
-        except:
-            bot.reply_to(m, "✅ Request diterima! Tapi Joni gagal lapor ke Saved Messages Admin. Pastikan Admin sudah klik /start di bot ini ya!")
-    else:
-        bot.reply_to(m, (f"⚠️ **Waduh Sob {m.from_user.first_name}, Salah Format!**\n\n"
-                         f"Ketiknya gini ya: `#request Judul Tahun` \n"
-                         f"Contoh: `#request Avatar 2009`"))
-
-# --- [ FITUR /IMDB ] ---
-@bot.message_handler(commands=['imdb'])
-def imdb_info(m):
-    query = m.text.replace('/imdb', '').strip()
-    if not query:
-        bot.reply_to(m, "Kasih judul filmnya dong sob! Contoh: `/imdb Inception`")
-        return
-    bot.send_chat_action(m.chat.id, 'typing')
-    jawaban = joni_brain(query, m.from_user.first_name, is_imdb=True)
+# --- [ TOMBOL ADMIN & IDENTITAS ] ---
+def admin_markup(name, username):
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("👤 Hubungi Admin", url="https://t.me/filmberbobot"))
-    bot.reply_to(m, jawaban, parse_mode="Markdown", reply_markup=markup)
+    # Menampilkan info penanya di bawah tombol agar tidak tertukar
+    markup.add(InlineKeyboardButton(f"🔍 Search by: {name}", callback_data="none"))
+    markup.add(InlineKeyboardButton("📞 Hubungi Admin", url="https://t.me/filmberbobot"))
+    return markup
 
-# --- [ CHAT AUTOMATIC ] ---
+# --- [ FITUR /IMDB: DATA TMDB ] ---
+@bot.message_handler(commands=['imdb'])
+def imdb_search(m):
+    query = m.text.replace('/imdb', '').strip()
+    name, user = m.from_user.first_name, m.from_user.username or "User"
+    
+    if not query:
+        bot.reply_to(m, f"Kasih judul filmnya dong sob {name}!", reply_markup=admin_markup(name, user))
+        return
+    
+    bot.send_chat_action(m.chat.id, 'typing')
+    url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_KEY}&query={query}&language=id-ID"
+    results = requests.get(url).json().get('results', [])
+    
+    if not results:
+        bot.reply_to(m, f"Maaf sob {name}, film itu nggak ada di database.", reply_markup=admin_markup(name, user))
+        return
+
+    # JIKA BANYAK PILIHAN
+    markup = InlineKeyboardMarkup()
+    for film in results[:8]:
+        tgl = film.get('release_date', '????')[:4]
+        # Callback data membawa info agar saat diklik Joni tetap ingat siapa yang klik
+        markup.add(InlineKeyboardButton(f"🎬 {film['title']} ({tgl})", callback_data=f"tmdb_{film['id']}"))
+    
+    markup.add(InlineKeyboardButton(f"👤 Untuk: {name}", callback_data="none"))
+    markup.add(InlineKeyboardButton("📞 Hubungi Admin", url="https://t.me/filmberbobot"))
+    bot.reply_to(m, f"Joni nemu daftar film buat Kak {name} nih. Pilih yang mana?", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('tmdb_'))
+def callback_tmdb(call):
+    movie_id = call.data.replace('tmdb_', '')
+    name, user = call.from_user.first_name, call.from_user.username or "User"
+    
+    bot.answer_callback_query(call.id, f"Sabar ya {name}...")
+    
+    # Ambil detail dari TMDB
+    m_url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_KEY}&language=id-ID"
+    m = requests.get(m_url).json()
+    poster = f"https://image.tmdb.org/t/p/w500{m.get('poster_path')}" if m.get('poster_path') else None
+    
+    # Joni Brain buat ngerapihin teks detail dengan sentuhan personal
+    raw_info = f"Judul: {m.get('title')}, Rating: {m.get('vote_average')}, Sinopsis: {m.get('overview')}"
+    detail_text = joni_brain(raw_info, name, user, mode="detail")
+    
+    if poster:
+        bot.send_photo(call.message.chat.id, poster, caption=detail_text, parse_mode="Markdown", reply_markup=admin_markup(name, user))
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    else:
+        bot.edit_message_text(detail_text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=admin_markup(name, user))
+
+# --- [ CHAT BIASA: INGAT ORANG YANG BERBEDA ] ---
 @bot.message_handler(func=lambda m: True)
 def group_chat(m):
-    if m.text:
-        is_sob = "sob" in m.text.lower()
-        is_reply = m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id
-        if is_sob or is_reply or m.chat.type == 'private':
-            bot.send_chat_action(m.chat.id, 'typing')
-            jawaban = joni_brain(m.text, m.from_user.first_name)
-            bot.reply_to(m, jawaban)
+    name, user = m.from_user.first_name, m.from_user.username or "User"
+    
+    # Proteksi Japri
+    if m.chat.type == 'private' and m.from_user.id != ADMIN_ID:
+        bot.reply_to(m, "Maaf sob, Joni cuma bisa dipake di grup @SheJua!", reply_markup=admin_markup(name, user))
+        return
+
+    # Trigger Chat (kata 'sob' atau Reply)
+    is_sob = m.text and "sob" in m.text.lower()
+    is_reply = m.reply_to_message and m.reply_to_message.from_user.id == bot.get_me().id
+    
+    if is_sob or is_reply or (m.chat.type == 'private' and m.from_user.id == ADMIN_ID):
+        bot.send_chat_action(m.chat.id, 'typing')
+        # Joni menjawab secara personal berdasarkan siapa yang mengirim pesan
+        jawaban = joni_brain(m.text, name, user)
+        bot.reply_to(m, jawaban, reply_markup=admin_markup(name, user))
 
 # --- [ VERCEL HANDLER ] ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        try:
-            update = telebot.types.Update.de_json(request.get_json(force=True))
-            bot.process_new_updates([update])
-            return "OK", 200
-        except Exception as e:
-            return str(e), 500
-    return "Joni @SheJua (Gemini 2.5 Flash) is Online! 🚀", 200
+        update = telebot.types.Update.de_json(request.get_json(force=True))
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Joni @SheJua is Online! 🚀", 200
 
 def handler(request):
     return app(request)
